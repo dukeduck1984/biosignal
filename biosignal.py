@@ -34,6 +34,8 @@ def rectify(emg_data):
 
     Param:
         emg_data: EMG data; type: ndarray
+    Return:
+        rectified emg signal; type:ndarray
     """
     rectified = np.abs(emg_data)
     return rectified
