@@ -28,7 +28,7 @@ Return:
 ###### By default, this bandpass filter uses 500hz for lowpass, and 20hz for highpass filter, the order for Butterworth is 4th.
 ```
 filter_bandpass(signal_data, freq, order=4, highpass=20, lowpass=500)
-```
+
 Param:
     signal_data: EMG or Force Plate data; type: ndarray
     freq: sampling rate (Hz); type: int
