@@ -688,3 +688,35 @@ def find_lt_dickhuth_method(intensity_data, lactate_data, plot=False):
 
     return (lt1_intensity, lt1_lactate, lt1_index, lt2_intensity, lt2_lactate)
 
+
+def oxidation_factor(vco2, vo2):
+    """
+    输入VCO2和VO2得到呼吸商，再得到糖和脂肪的氧化供能占比
+    Get RER, and energy source by VO2 and VCO2 data
+
+    Reference: PERONNET F et al., 1991
+
+    Param:
+        vco2: vco2 data from gas exchange test; type: ndarray
+        vo2: vo2 data from gas exchange test; type: ndarray
+    Return: A tuple:
+        rer: Respiratory Exchange Ratio; type:float
+        glucose_kcal: Energy provided by glucose (kcal/min); type: ndarray
+        fat_kcal: Energy provided by fat (kcal/min); type: ndarray
+        glucose_percent: Energy provided by glucose percentage; type: ndarray
+        fat_percent: Energy provided by fat percentage; type: ndarray
+    Example:
+        glucose, fat = oxidation_factor(3282.49489346189, 3568.79672239863)
+        print("糖氧化为{}%；脂肪氧化为{}%".format(glucose, fat))
+    """
+    rq = vco2 / vo2 # 得到呼吸商原始值
+    rer = np.where(rq >= 0.7, rq, 0.7) # 排除异常值，即将呼吸商最小值设为0.7
+    rq = np.where(rer <= 1, rer, 1) # 用于计算有氧部分的供能来源，故将呼吸商最大值设为1
+    x_gram_fat = (0.7426 - 0.7455 * rq) / (2.0092 * rq - 1.4136) # x g脂肪氧化产生的能量
+    e = 3.8683 + x_gram_fat * 9.7460 # 氧化1g糖和x g脂肪产生的能量 （PERONNET F et al., 1991）
+    glucose_percent = 3.8683 / e * 100 # 糖有氧氧化供能百分比
+    fat_percent = 100 - glucose_percent # 脂肪有氧氧化供能百分比
+    energy_oxidation = e / (0.7455 + 2.0092 * x_gram_fat) # 有氧氧化供能的能量（Kcal/L）
+    glucose_kcal = energy_oxidation * vo2 / 1000 * glucose_percent / 100 # 糖有氧氧化供能的能量（Kcal/min）
+    fat_kcal = energy_oxidation * vo2 / 1000 * fat_percent / 100 # 脂肪有氧氧化供能的能量（Kcal/min）
+    return (rer, glucose_kcal, fat_kcal, glucose_percent, fat_percent) # 返回数组（呼吸商，糖供能能量，脂肪供能能量，糖供能百分比，脂肪供能百分比）
