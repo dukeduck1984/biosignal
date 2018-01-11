@@ -1,16 +1,6 @@
 
 # coding: utf-8
 
-import pandas as pd
-import numpy as np
-from numba import jit
-from scipy import signal
-from scipy import interpolate
-import matplotlib.pyplot as plt
-import seaborn as sns
-import os
-
-
 @jit
 def remove_offset(emg_data):
     """
@@ -328,3 +318,369 @@ def distance_time_curve(vtc, freq):
     for i in range(distance.size):
         dist_time_curve.append(np.sum(distance[: i]))
     return np.array(dist_time_curve)
+
+
+@jit
+def find_turnpoints(x_data, y_data, initial_g_size=2, step_size=1, turnpoint_size=1, plot=False, turnpoints=[],
+                    tp_initial=0):
+    """
+    使用线性回归寻找数据的拐点
+
+    Param:
+        x_data: data on x axis; type: list, or ndarray
+        y_data: data on y axis; type: list, or ndarray
+        initial_g_size: the initial number of data points in group 1; type: int
+        step_size: the increment of group 1; type: int
+        turnpoint_size: number of turnpoints; type: int
+        plot: whether or not plot the data and the regression line; type: boolean
+        turnpoints: for data recursion, leave it as is; type: list
+        tp_initial: for data recursion, leave it as is; type: int
+    Return:
+        turnpoints: turnpoint(s) of data after linear regression; type: list
+    """
+    x_data = np.array(x_data).reshape(-1, 1)
+    y_data = np.array(y_data).reshape(-1, 1)
+    # turnpoint_size = 1 # 拐点的数量 1个或2个
+    # initial_g_size = 2 # 数据分组，第1组的初始数据点数
+    # step_size = 1 # 分组调整尺寸时的数据数量
+    # plot = True # 是否要作图
+    residual_sum_of_squares = []  # 收集各分组情况的均方误差列表
+    g1_error_list = []
+    g2_error_list = []
+    g1_size = initial_g_size  # 第1组的数据点数
+    sample_size = x_data.size  # 总共的数据点数
+
+    while (sample_size - g1_size) >= initial_g_size:  # 当第2组的数据点数大于等于第1组的初始数据点数时
+        regr_g1 = linear_model.LinearRegression()
+        regr_g1.fit(x_data[:g1_size], y_data[:g1_size])
+        # a1, b1 = regr_g1.coef_, regr_g1.intercept_
+        g1_mean_sq_error = np.mean((regr_g1.predict(x_data[:g1_size]) - y_data[:g1_size]) ** 2)
+        # print('y = {}x + {}'.format(a1[0], b1))
+        # plt.plot(log_power[:7], regr_g1.predict(log_power[:7]), color='red')
+
+        regr_g2 = linear_model.LinearRegression()
+        regr_g2.fit(x_data[g1_size - 1:], y_data[g1_size - 1:])
+        # a2, b2 = regr_g2.coef_, regr_g2.intercept_
+        g2_mean_sq_error = np.mean((regr_g2.predict(x_data[g1_size - 1:]) - y_data[g1_size - 1:]) ** 2)
+        # print('y = {}x + {}'.format(a2[0], b2))
+        # plt.plot(log_power[4:], regr_g2.predict(log_power[4:]), color='green')
+
+        residual_sum_of_squares.append(g1_mean_sq_error + g2_mean_sq_error)  # 两组的均方误差之和加入列表
+        g1_error_list.append(g1_mean_sq_error)
+        g2_error_list.append(g2_mean_sq_error)
+
+        g1_size += step_size
+
+    # print(residual_sum_of_squares)
+    # 通过最小均方误差找到拐点index
+    # rss = np.array(residual_sum_of_squares)
+    # turnpoint_index = initial_g_size - 1 + step_size * np.where(rss == np.min(rss))[0]
+    min_error_index = residual_sum_of_squares.index(min(residual_sum_of_squares))
+
+    g1_min_error = g1_error_list[min_error_index]
+    g2_min_error = g2_error_list[min_error_index]
+
+    # 获得分组内的拐点index
+    turnpoint_index = initial_g_size - 1 + step_size * min_error_index
+
+    # 获得全局的拐点index
+    if g1_min_error < g2_min_error:
+        tp_global = initial_g_size - 1 + step_size * min_error_index + tp_initial
+        tp_initial = turnpoint_index + tp_initial
+    else:
+        tp_global = initial_g_size - 1 + step_size * min_error_index + tp_initial
+
+    # 把全局拐点index加入列表
+    turnpoints.append(tp_global)
+
+    # 把确认找到的拐点再做一次拟合，用于输出图像
+    regr_g1 = linear_model.LinearRegression()
+    regr_g1.fit(x_data[:turnpoint_index + 1], y_data[:turnpoint_index + 1])
+    # a1, b1 = regr_g1.coef_, regr_g1.intercept_
+    # print('y = {}x + {}'.format(a1[0], b1))
+
+    regr_g2 = linear_model.LinearRegression()
+    regr_g2.fit(x_data[turnpoint_index:], y_data[turnpoint_index:])
+    # a2, b2 = regr_g2.coef_, regr_g2.intercept_
+    # print('y = {}x + {}'.format(a2[0], b2))
+
+    if plot:  # 是否要作图的选项
+        if turnpoint_size > 1:
+            if g1_min_error > g2_min_error:
+                # plt.plot(x_data[:turnpoint_index+1+step_size], y_data[:turnpoint_index+1+step_size], 'o')
+                plt.plot(x_data[turnpoint_index - step_size:], y_data[turnpoint_index - step_size:], 'o')
+                # plt.plot(x_data[:turnpoint_index+1+step_size], regr_g1.predict(x_data[:turnpoint_index+1+step_size]))
+                plt.plot(x_data[turnpoint_index - step_size:], regr_g2.predict(x_data[turnpoint_index - step_size:]))
+            else:
+                plt.plot(x_data[:turnpoint_index + 1 + step_size], y_data[:turnpoint_index + 1 + step_size], 'o')
+                # plt.plot(x_data[turnpoint_index-step_size:], y_data[turnpoint_index-step_size:], 'o')
+                plt.plot(x_data[:turnpoint_index + 1 + step_size],
+                         regr_g1.predict(x_data[:turnpoint_index + 1 + step_size]))
+                # plt.plot(x_data[turnpoint_index-step_size:], regr_g2.predict(x_data[turnpoint_index-step_size:]))
+        else:
+            plt.plot(x_data[:turnpoint_index + 1 + step_size], y_data[:turnpoint_index + 1 + step_size], 'o')
+            plt.plot(x_data[turnpoint_index - step_size:], y_data[turnpoint_index - step_size:], 'o')
+            plt.plot(x_data[:turnpoint_index + 1 + step_size],
+                     regr_g1.predict(x_data[:turnpoint_index + 1 + step_size]))
+            plt.plot(x_data[turnpoint_index - step_size:], regr_g2.predict(x_data[turnpoint_index - step_size:]))
+
+    # 下面的语句把1个或者2个拐点的index存入turnpoints列表，并返回
+    while turnpoint_size > 1:
+        if g1_min_error > g2_min_error:
+            x_data = x_data[:turnpoint_index + 1 + step_size]
+            y_data = y_data[:turnpoint_index + 1 + step_size]
+            find_turnpoints(x_data, y_data, initial_g_size=initial_g_size, step_size=step_size,
+                            turnpoint_size=turnpoint_size - 1, plot=plot, turnpoints=turnpoints, tp_initial=tp_initial)
+            return turnpoints
+            turnpoint_size -= 1
+        else:
+            x_data = x_data[turnpoint_index + step_size:]
+            y_data = y_data[turnpoint_index + step_size:]
+            find_turnpoints(x_data, y_data, initial_g_size=initial_g_size, step_size=step_size,
+                            turnpoint_size=turnpoint_size - 1, plot=plot, turnpoints=turnpoints, tp_initial=tp_initial)
+            return turnpoints
+            turnpoint_size -= 1
+    else:
+        return turnpoints
+
+
+@jit
+def find_lt_loglog_method(intensity_data, lactate_data, plot=False):
+    """
+    使用Log-log方法判定乳酸阈（LT1）
+
+    Reference:
+        Beaver, W. L., Wasserman, K. A. R. L. M. A. N., & Whipp, B. J. (1985).
+        Improved detection of lactate threshold during exercise using a log-log transformation.
+        Journal of applied physiology, 59(6), 1936-1940.
+    Param:
+        intensity_data: data series of test load (power, or speed); type: list, or ndarray
+        lactate_data: data series of BLa; type: list, or ndarray
+        plot: whether or not plot the data and the regression line; type: boolean
+    Return:
+        (Load at LT1, BLa at LT1, Index of data at LT1); type: tuple
+    """
+    intensity_data = np.array(intensity_data).reshape(-1, 1)
+    lactate_data = np.array(lactate_data).reshape(-1, 1)
+    log_intensity = np.log(intensity_data)  # 计算运动强度数据的log
+    log_lactate = np.log(lactate_data)  # 计算血乳酸数据的log
+    # 找到LT1拐点的index及两条拟合直线的斜率和截距
+    lt1_index = find_turnpoints(log_intensity, log_lactate, plot=plot)
+    regr_g1 = linear_model.LinearRegression()
+    regr_g1.fit(log_intensity[:lt1_index[0] + 1], log_lactate[:lt1_index[0] + 1])
+    a1, b1 = regr_g1.coef_, regr_g1.intercept_
+    # print('y = {}x + {}'.format(a1[0], b1))
+    regr_g2 = linear_model.LinearRegression()
+    regr_g2.fit(log_intensity[lt1_index[0]:], log_lactate[lt1_index[0]:])
+    a2, b2 = regr_g2.coef_, regr_g2.intercept_
+    a1 = a1[0][0]
+    a2 = a2[0][0]
+    b1 = b1[0]
+    b2 = b2[0]
+    x = (b2 - b1) / (a1 - a2)
+    y = a1 * (b2 - b1) / (a1 - a2) + b1
+    lt1_intensity = np.exp(x)  # 计算两条拟合直线交点对应的X轴数据，即LT1运动强度
+    lt1_lactate = np.exp(y)  # 计算两条拟合直线交点对应的Y轴数据，即LT1血乳酸值
+    return (lt1_intensity, lt1_lactate, lt1_index[0])  # 返回元组（LT1的运动强度, LT1的血乳酸值, LT1的index）
+
+
+@jit
+def find_lt_sds_method(intensity_data, lactate_data, loglog=False, plot=False):
+    """
+    使用标准化Dmax确定LT1 & LT2
+
+    Reference:
+        Standardization of the Dmax Method for Calculating the Second Lactate Threshold
+        Chalmers et al., 2015
+        International Journal of Sports Physiology and Performance
+    Param:
+        intensity_data: data series of test load (power, or speed); type: list, or ndarray
+        lactate_data: data series of BLa; type: list, or ndarray
+        log-log: whether or not to use Log-log transformation to determin the LT1, if false, LT1 is determined by first rise of 0.4mM BLa; type: boolean
+        plot: whether or not plot the data and the regression line; type: boolean
+    Return:
+        (Load at LT1, BLa at LT1, Index of data at LT1, Load at LT2, BLa at LT2); type: tuple
+    """
+    intensity_data = np.array(intensity_data).reshape(-1, 1)
+    lactate_data = np.array(lactate_data).reshape(-1, 1)
+
+    if loglog:  # 如果使用loglog transformation计算LT1
+        lt1_intensity, lt1_lactate, lt1_index = find_lt_loglog_method(intensity_data, lactate_data, plot=False)
+    else:  # 使用La浓度初次超过0.4mM的前一级负荷作为LT1
+        for index, la in enumerate(lactate_data):
+            if index > 0:
+                if (lactate_data[index] - lactate_data[index - 1]) >= 0.4:
+                    lt1_index = index - 1
+                    break
+        lt1_intensity = intensity_data[lt1_index][0]
+        lt1_lactate = lactate_data[lt1_index][0]
+
+    # 获得LT1点的X和Y的坐标
+    lt1_x = intensity_data[lt1_index][0]
+    lt1_y = lactate_data[lt1_index][0]
+
+    # 获得血乳酸最大值那点的X和Y的坐标
+    la_final_x = intensity_data[-1][0]
+    la_final_y = lactate_data[-1][0]
+
+    # 设LT1点的坐标为（x1, y1）
+    # x1 = power[1][0]
+    # y1 = lactate[1][0]
+
+    if lt1_index >= 2:
+        x1 = intensity_data[lt1_index - 2][0]
+        y1 = lactate_data[lt1_index - 2][0]
+        curvefit_index = lt1_index - 2
+    elif lt1_index >= 1 and lt1_index < 2:
+        x1 = intensity_data[lt1_index - 1][0]
+        y1 = lactate_data[lt1_index - 1][0]
+        curvefit_index = lt1_index - 1
+    else:
+        # print(power[lt1_index], lactate[lt1_index])
+        x1 = intensity_data[lt1_index][0]
+        y1 = lactate_data[lt1_index][0]
+        curvefit_index = lt1_index
+
+    # x1 = lt1_x
+    # y1 = lt1_y
+
+    # 设血乳酸最大值的坐标为（x2, y2）
+    x2 = la_final_x
+    y2 = la_final_y
+
+    # 根据两点式推导出一般式 AX+BY+C=0的A, B, C
+    a = y1 - y2
+    b = x2 - x1
+    c = x1 * y2 - x2 * y1
+
+    # 多项式回归线上一点到直线的距离
+    # d = np.abs(a * x0 + b * y0 + c) / np.sqrt(a ** 2 + b ** 2)
+
+    # 曲线拟合的X和Y数据序列
+    x_train = intensity_data[curvefit_index:]
+    y_train = lactate_data[curvefit_index:]
+    la_curve_x = np.linspace(intensity_data[curvefit_index][0], x2, 300)
+    d_mod_line_x = np.linspace(x1, x2, 300)
+
+    poly = PolynomialFeatures(degree=3)  # 3次多项式回归
+    x_train_quadratic = poly.fit_transform(x_train)
+    regressor_quadratic = linear_model.LinearRegression()
+    regressor_quadratic.fit(x_train_quadratic, y_train)
+    d_mod_line = linear_model.LinearRegression()
+    d_mod_line.fit([[x1], [x2]], [[y1], [y2]])
+    xx_quadratic = poly.transform(la_curve_x.reshape(la_curve_x.shape[0], 1))
+    la_curve_x = la_curve_x.reshape(-1, 1)
+    d_mod_line_x = d_mod_line_x.reshape(-1, 1)
+
+    # 建一个列表来储存d值
+    find_d_max_list = []
+
+    # 遍历弧线上的点
+    for x0, y0 in zip(la_curve_x, regressor_quadratic.predict(xx_quadratic)):
+        x0 = x0[0]
+        y0 = y0[0]
+        # 求弧线上点（x0, y0）到直线的距离 d
+        d = np.abs(a * x0 + b * y0 + c) / np.sqrt(a ** 2 + b ** 2)
+        # 如果列表为空，则储存（x0, y0）坐标和 d 值
+        if len(find_d_max_list) == 0:
+            find_d_max_list.append(x0)  # X0坐标，即运动强度
+            find_d_max_list.append(y0)  # Y0坐标，即血乳酸浓度
+            find_d_max_list.append(d)  # d，即Dmax值
+        # 如列表已有数据，则比较 d 的大小并进行替换，直至找到 d 的最大值
+        elif len(find_d_max_list) == 3:
+            if d > find_d_max_list[-1]:
+                find_d_max_list[0] = x0
+                find_d_max_list[1] = y0
+                find_d_max_list[2] = d
+
+    lt2_intensity = find_d_max_list[0]
+    lt2_lactate = find_d_max_list[1]
+
+    if plot:
+        plt.plot(intensity_data, lactate_data, '^')  # 画出负荷强度vs血乳酸的原始数据点
+        plt.plot(la_curve_x, regressor_quadratic.predict(xx_quadratic), 'r-')  # 画出血乳酸呈指数上升的回归曲线
+        plt.plot(d_mod_line_x, d_mod_line.predict(d_mod_line_x), 'g--')  # 画出连接第一个和最后一个数据点的直线
+        plt.plot([lt1_intensity, lt1_intensity], [0, lt1_lactate], '--')  # 画出LT1的标示线
+        plt.plot([lt2_intensity, lt2_intensity], [0, lt2_lactate], '--')  # 画出LT2的标示线
+
+    # 返回元组（LT1的运动强度, LT1的血乳酸值, LT1的index, LT2的运动强度, LT2的血乳酸值）
+    return (lt1_intensity, lt1_lactate, lt1_index, lt2_intensity, lt2_lactate)
+
+
+@jit
+def find_lt_dickhuth_method(intensity_data, lactate_data, plot=False):
+    """
+    使用Dickhuth-Berg方法确定LT1 & LT2
+
+    Reference:
+        Berg A, Jokob M, Lehmann HH, Dickhuth G, Huber J. Actualle Aspekte der modernen ergometrie. Pneum 1990;44:2-13.
+    Param:
+        intensity_data: data series of test load (power, or speed); type: list, or ndarray
+        lactate_data: data series of BLa; type: list, or ndarray
+        plot: whether or not plot the data and the regression line; type: boolean
+    Return:
+        (Load at LT1, BLa at LT1, Index of data at LT1, Load at LT2, BLa at LT2); type: tuple
+    """
+    intensity_data = np.array(intensity_data).reshape(-1, 1)
+    lactate_data = np.array(lactate_data).reshape(-1, 1)
+
+    # 计算乳酸浓度/负荷比
+    lactate_eq = (lactate_data / intensity_data).reshape(-1)
+    # 找到最小乳酸浓度/负荷比，即LT1的index
+    lt1_index = np.argsort(lactate_eq)[0]
+    # 获得LT1的乳酸浓度
+    lt1_lactate = lactate_data[lt1_index][0]
+    lt1_intensity = intensity_data[lt1_index][0]
+    # 获得LT2的乳酸浓度，即LT1 + 1.5mM
+    lt2_lactate = lt1_lactate + 1.5
+
+    # 根据LT1点的index决定曲线拟合的起点index
+    if lt1_index >= 2:
+        curvefit_index = lt1_index - 2
+    elif lt1_index >= 1 and lt1_index < 2:
+        curvefit_index = lt1_index - 1
+    else:
+        curvefit_index = lt1_index
+
+    # LT1 点的X坐标
+    lt1_x = intensity_data[lt1_index][0]
+    # 第一级和最后一级的X坐标
+    x1 = intensity_data[0][0]
+    x2 = intensity_data[-1][0]
+
+    x_train = intensity_data[curvefit_index:]
+    y_train = lactate_data[curvefit_index:]
+    la_curve_x = np.linspace(intensity_data[curvefit_index][0], x2, 300)
+
+    poly = PolynomialFeatures(degree=3)  # 3次多项式回归
+    x_train_quadratic = poly.fit_transform(x_train)
+    regressor_quadratic = linear_model.LinearRegression()
+    regressor_quadratic.fit(x_train_quadratic, y_train)
+    xx_quadratic = poly.transform(la_curve_x.reshape(la_curve_x.shape[0], 1))
+    la_curve_x = la_curve_x.reshape(-1, 1)
+
+    # 在拟合的曲线上找到LT2的index和对应的强度
+    lt2_index = np.argsort(np.abs(regressor_quadratic.predict(xx_quadratic).reshape(-1) - lt2_lactate))[0]
+    lt2_intensity = la_curve_x[lt2_index][0]
+
+    if plot:
+        plt.plot(intensity_data, lactate_data, '^')  # 画出负荷强度vs血乳酸的原始数据点
+        plt.plot(la_curve_x, regressor_quadratic.predict(xx_quadratic), 'r-')  # 画出血乳酸呈指数上升的回归曲线
+        plt.plot([lt1_x, lt1_x], [0, lt1_lactate], '--')  # 画出LT1的标示线
+        plt.plot([lt2_intensity, lt2_intensity], [0, lt2_lactate], '--')  # 画出LT2的标示线
+
+        plt.ylabel('Lactate (mM)')
+
+        pace_list = []
+        for kph in range(x1, x2 + 1):
+            m, s = str(1 / (kph / 60)).split(".")
+            s = str(int(float("0." + s) * 60))
+            if s == "0":
+                s = "00"
+            pace_list.append(m + ":" + s)
+
+            # plt.xlabel('Pace (min/km)')
+            # plt.xticks(range(x1, x2 + 1), pace_list)
+
+    return (lt1_intensity, lt1_lactate, lt1_index, lt2_intensity, lt2_lactate)
+
