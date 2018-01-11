@@ -24,3 +24,4 @@ from .biosignals import breath_smooth
 from .biosignals import breath_time_convert
 from .biosignals import velocity_time_curve
 from .biosignals import distance_time_curve
+from .biosignals import oxidation_factor
