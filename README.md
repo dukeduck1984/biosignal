@@ -1,5 +1,5 @@
 # biosignal
-# A Python Library for Processing Bio Signal
+# A Python Library for Processing Bio Signals
 
 ## 1. Processing EMG Signal
 
