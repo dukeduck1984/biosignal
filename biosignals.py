@@ -337,22 +337,19 @@ def find_turnpoints(x_data, y_data, initial_g_size=2, step_size=1, turnpoint_siz
         y_data: data on y axis; type: list, or ndarray
         initial_g_size: the initial number of data points in group 1; type: int
         step_size: the increment of group 1; type: int
-        turnpoint_size: number of turnpoints; type: int
+        turnpoint_size: number of turnpoints expected; type: int
         plot: whether or not plot the data and the regression line; type: boolean
         turnpoints: for data recursion, leave it as is; type: list
         tp_initial: for data recursion, leave it as is; type: int
     Return:
-        turnpoints: turnpoint(s) of data after linear regression; type: list
+        turnpoints: the global index(es) of data turnpoint(s) after linear regression; type: list
     """
     x_data = np.array(x_data).reshape(-1, 1)
     y_data = np.array(y_data).reshape(-1, 1)
-    # turnpoint_size = 1 # 拐点的数量 1个或2个
-    # initial_g_size = 2 # 数据分组，第1组的初始数据点数
-    # step_size = 1 # 分组调整尺寸时的数据数量
-    # plot = True # 是否要作图
+
     residual_sum_of_squares = []  # 收集各分组情况的均方误差列表
-    g1_error_list = []
-    g2_error_list = []
+    g1_error_list = []  # 第1组数据的误差列表
+    g2_error_list = []  # 第2组数据的误差列表
     g1_size = initial_g_size  # 第1组的数据点数
     sample_size = x_data.size  # 总共的数据点数
 
@@ -396,8 +393,9 @@ def find_turnpoints(x_data, y_data, initial_g_size=2, step_size=1, turnpoint_siz
     else:
         tp_global = initial_g_size - 1 + step_size * min_error_index + tp_initial
 
-    # 把全局拐点index加入列表
-    turnpoints.append(tp_global)
+    # 把全局拐点index加入列表，同时避免重复记录
+    if tp_global not in turnpoints:
+        turnpoints.append(tp_global)
 
     # 把确认找到的拐点再做一次拟合，用于输出图像
     regr_g1 = linear_model.LinearRegression()
