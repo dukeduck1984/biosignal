@@ -73,7 +73,7 @@ def interp_signal(signal_data, original_freq, interp_freq):
     """
     x = np.arange(signal_data.size)
     y = signal_data[x]
-    interp_x = np.linspace(0, signal_data.size, signal_data.size * (interp_freq/original_freq))
+    interp_x = np.linspace(0, signal_data.size, int(signal_data.size * (interp_freq/original_freq)))
     interp_y = np.interp(interp_x, x, y)
     return interp_y
 
