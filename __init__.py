@@ -7,8 +7,6 @@ import math
 import pandas as pd
 from pprint import pprint
 from pandas.io.json import json_normalize
-from sklearn.preprocessing import PolynomialFeatures
-from sklearn import linear_model
 import matplotlib.pyplot as plt
 import json
 from .biosignals import remove_offset
