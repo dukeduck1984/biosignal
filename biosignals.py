@@ -396,6 +396,7 @@ def find_turnpoints(x_data, y_data, initial_g_size=2, step_size=1, turnpoint_siz
     # 把全局拐点index加入列表，同时避免重复记录
     if tp_global not in turnpoints:
         turnpoints.append(tp_global)
+    tp2 = turnpoints
 
     # 把确认找到的拐点再做一次拟合，用于输出图像
     regr_g1 = linear_model.LinearRegression()
@@ -434,14 +435,14 @@ def find_turnpoints(x_data, y_data, initial_g_size=2, step_size=1, turnpoint_siz
             x_data = x_data[:turnpoint_index + 1 + step_size]
             y_data = y_data[:turnpoint_index + 1 + step_size]
             find_turnpoints(x_data, y_data, initial_g_size=initial_g_size, step_size=step_size,
-                            turnpoint_size=turnpoint_size - 1, plot=plot, turnpoints=turnpoints, tp_initial=tp_initial)
+                            turnpoint_size=turnpoint_size - 1, plot=plot, turnpoints=tp2, tp_initial=tp_initial)
             return turnpoints
             turnpoint_size -= 1
         else:
             x_data = x_data[turnpoint_index + step_size:]
             y_data = y_data[turnpoint_index + step_size:]
             find_turnpoints(x_data, y_data, initial_g_size=initial_g_size, step_size=step_size,
-                            turnpoint_size=turnpoint_size - 1, plot=plot, turnpoints=turnpoints, tp_initial=tp_initial)
+                            turnpoint_size=turnpoint_size - 1, plot=plot, turnpoints=tp2, tp_initial=tp_initial)
             return turnpoints
             turnpoint_size -= 1
     else:
