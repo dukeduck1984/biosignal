@@ -73,7 +73,7 @@ def interp_signal(signal_data, original_freq, interp_freq):
     """
     x = np.arange(signal_data.size)
     y = signal_data[x]
-    interp_x = np.linspace(0, signal_data.size, int(signal_data.size * (interp_freq/original_freq)))
+    interp_x = np.linspace(0, signal_data.size-1, int(signal_data.size * (interp_freq/original_freq)))
     interp_y = np.interp(interp_x, x, y)
     return interp_y
 
@@ -223,7 +223,7 @@ def breath_smooth(breath_data, time_series, window_size=30, avg_by='time'):
         breath_data: Gas data from K4b2; type: ndarray
         time_series: Corresponding time series in seconds (can use 'breath_time_convert' function); type: ndarray
         window_size: time to average in seconds, or number of points (breath). ignored if by lowpass; type: int
-        method: 'time': time averaged (in seconds);
+        avg_by: 'time': time averaged (in seconds);
                 'points': breath running average;
                 'lowpass'; 3rd order Butterworth 0.04 lowpass filter;
                 type: string
