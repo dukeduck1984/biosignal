@@ -209,7 +209,7 @@ def power_spectrum(emg_data):
 
 
 @jit
-def breath_smooth(breath_data, time_series, window_size=30, method='time'):
+def breath_smooth(breath_data, time_series, window_size=30, avg_by='time'):
     """
     气体代谢数据进行平滑处理
     Smoothing the Gas Exchange data by different methods
@@ -232,14 +232,14 @@ def breath_smooth(breath_data, time_series, window_size=30, method='time'):
         smoothed_breath_data: smoothed gas exchange data; type: ndarray
      """
 
-    if method == 'lowpass':
+    if avg_by == 'lowpass':
         n = 3  # 3rd order Butterworth
         wn = 0.04  # Cutoff frequency
         b, a = signal.butter(n, wn)
         filtered_breath_data = signal.filtfilt(b, a, breath_data)
         # Return breath time series and smoothed breath data in a tuple, both are ndarray
         return (time_series, filtered_breath_data)
-    elif method == 'time':
+    elif avg_by == 'time':
         midpoint = round(window_size / 2)  # Get midpoint of the window, eg. the 8th second if the window is 15s
         smoothed_block = int(time_series[-1] / window_size)  # Get the smoothed block number: total time divided by window size
         smoothed_breath_data = np.zeros(smoothed_block)  # Create ndarray of smoothed data
