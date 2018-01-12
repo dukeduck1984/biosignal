@@ -3,7 +3,8 @@
 import numpy as np
 from numba import jit
 from scipy import signal
-
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn import linear_model
 
 @jit
 def remove_offset(emg_data):
