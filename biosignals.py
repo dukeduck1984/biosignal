@@ -326,6 +326,7 @@ def distance_time_curve(vtc, freq):
     return np.array(dist_time_curve)
 
 
+@jit
 def find_turnpoints(x_data, y_data, initial_g_size=2, step_size=1, turnpoint_size=1, plot=False,
                     tp_initial=0):
     """
@@ -346,6 +347,7 @@ def find_turnpoints(x_data, y_data, initial_g_size=2, step_size=1, turnpoint_siz
     """
     initialize_tp = []  # Initialize an empty list to collect turnpoints
 
+    @jit
     def wrapper(x_data, y_data, initial_g_size, step_size, turnpoint_size, plot, tp_initial, turnpoints=initialize_tp):
 
         x_data = np.array(x_data).reshape(-1, 1)
