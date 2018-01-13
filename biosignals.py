@@ -327,10 +327,11 @@ def distance_time_curve(vtc, freq):
 
 
 @jit
-def find_turnpoints(x_data, y_data, initial_g_size=2, step_size=1, turnpoint_size=1, plot=False, turnpoints=[],
+def find_turnpoints(x_data, y_data, initial_g_size=2, step_size=1, turnpoint_size=1, plot=False,
                     tp_initial=0):
     """
     使用线性回归寻找数据的拐点
+    Find Turnpoints of Data Points by Brutal-Force Linear Regression
 
     Param:
         x_data: data on x axis; type: list, or ndarray
@@ -344,109 +345,119 @@ def find_turnpoints(x_data, y_data, initial_g_size=2, step_size=1, turnpoint_siz
     Return:
         turnpoints: the global index(es) of data turnpoint(s) after linear regression; type: list
     """
-    x_data = np.array(x_data).reshape(-1, 1)
-    y_data = np.array(y_data).reshape(-1, 1)
+    initialize_tp = []  # Initialize an empty list to collect turnpoints
 
-    residual_sum_of_squares = []  # 收集各分组情况的均方误差列表
-    g1_error_list = []  # 第1组数据的误差列表
-    g2_error_list = []  # 第2组数据的误差列表
-    g1_size = initial_g_size  # 第1组的数据点数
-    sample_size = x_data.size  # 总共的数据点数
+    def wrapper(x_data, y_data, initial_g_size, step_size, turnpoint_size, plot, tp_initial, turnpoints=initialize_tp):
 
-    while (sample_size - g1_size) >= initial_g_size:  # 当第2组的数据点数大于等于第1组的初始数据点数时
+        x_data = np.array(x_data).reshape(-1, 1)
+        y_data = np.array(y_data).reshape(-1, 1)
+
+        residual_sum_of_squares = []  # 收集各分组情况的均方误差列表
+        g1_error_list = []  # 第1组数据的误差列表
+        g2_error_list = []  # 第2组数据的误差列表
+        g1_size = initial_g_size  # 第1组的数据点数
+        sample_size = x_data.size  # 总共的数据点数
+
+        while (sample_size - g1_size) >= initial_g_size:  # 当第2组的数据点数大于等于第1组的初始数据点数时
+            regr_g1 = linear_model.LinearRegression()
+            regr_g1.fit(x_data[:g1_size], y_data[:g1_size])
+            # a1, b1 = regr_g1.coef_, regr_g1.intercept_
+            g1_mean_sq_error = np.mean((regr_g1.predict(x_data[:g1_size]) - y_data[:g1_size]) ** 2)
+            # print('y = {}x + {}'.format(a1[0], b1))
+            # plt.plot(log_power[:7], regr_g1.predict(log_power[:7]), color='red')
+
+            regr_g2 = linear_model.LinearRegression()
+            regr_g2.fit(x_data[g1_size - 1:], y_data[g1_size - 1:])
+            # a2, b2 = regr_g2.coef_, regr_g2.intercept_
+            g2_mean_sq_error = np.mean((regr_g2.predict(x_data[g1_size - 1:]) - y_data[g1_size - 1:]) ** 2)
+            # print('y = {}x + {}'.format(a2[0], b2))
+            # plt.plot(log_power[4:], regr_g2.predict(log_power[4:]), color='green')
+
+            residual_sum_of_squares.append(g1_mean_sq_error + g2_mean_sq_error)  # 两组的均方误差之和加入列表
+            g1_error_list.append(g1_mean_sq_error)
+            g2_error_list.append(g2_mean_sq_error)
+
+            g1_size += step_size
+
+        # print(residual_sum_of_squares)
+        # 通过最小均方误差找到拐点index
+        # rss = np.array(residual_sum_of_squares)
+        # turnpoint_index = initial_g_size - 1 + step_size * np.where(rss == np.min(rss))[0]
+        min_error_index = residual_sum_of_squares.index(min(residual_sum_of_squares))
+
+        g1_min_error = g1_error_list[min_error_index]
+        g2_min_error = g2_error_list[min_error_index]
+
+        # 获得分组内的拐点index
+        turnpoint_index = initial_g_size - 1 + step_size * min_error_index
+
+        # 获得全局的拐点index
+        if g1_min_error < g2_min_error:
+            tp_global = initial_g_size - 1 + step_size * min_error_index + tp_initial
+            tp_initial = turnpoint_index + tp_initial
+        else:
+            tp_global = initial_g_size - 1 + step_size * min_error_index + tp_initial
+
+        # 把全局拐点index加入列表，同时避免重复记录
+        if tp_global not in turnpoints:
+            turnpoints.append(tp_global)
+        tp2 = turnpoints
+
+        # 把确认找到的拐点再做一次拟合，用于输出图像
         regr_g1 = linear_model.LinearRegression()
-        regr_g1.fit(x_data[:g1_size], y_data[:g1_size])
+        regr_g1.fit(x_data[:turnpoint_index + 1], y_data[:turnpoint_index + 1])
         # a1, b1 = regr_g1.coef_, regr_g1.intercept_
-        g1_mean_sq_error = np.mean((regr_g1.predict(x_data[:g1_size]) - y_data[:g1_size]) ** 2)
         # print('y = {}x + {}'.format(a1[0], b1))
-        # plt.plot(log_power[:7], regr_g1.predict(log_power[:7]), color='red')
 
         regr_g2 = linear_model.LinearRegression()
-        regr_g2.fit(x_data[g1_size - 1:], y_data[g1_size - 1:])
+        regr_g2.fit(x_data[turnpoint_index:], y_data[turnpoint_index:])
         # a2, b2 = regr_g2.coef_, regr_g2.intercept_
-        g2_mean_sq_error = np.mean((regr_g2.predict(x_data[g1_size - 1:]) - y_data[g1_size - 1:]) ** 2)
         # print('y = {}x + {}'.format(a2[0], b2))
-        # plt.plot(log_power[4:], regr_g2.predict(log_power[4:]), color='green')
 
-        residual_sum_of_squares.append(g1_mean_sq_error + g2_mean_sq_error)  # 两组的均方误差之和加入列表
-        g1_error_list.append(g1_mean_sq_error)
-        g2_error_list.append(g2_mean_sq_error)
-
-        g1_size += step_size
-
-    # print(residual_sum_of_squares)
-    # 通过最小均方误差找到拐点index
-    # rss = np.array(residual_sum_of_squares)
-    # turnpoint_index = initial_g_size - 1 + step_size * np.where(rss == np.min(rss))[0]
-    min_error_index = residual_sum_of_squares.index(min(residual_sum_of_squares))
-
-    g1_min_error = g1_error_list[min_error_index]
-    g2_min_error = g2_error_list[min_error_index]
-
-    # 获得分组内的拐点index
-    turnpoint_index = initial_g_size - 1 + step_size * min_error_index
-
-    # 获得全局的拐点index
-    if g1_min_error < g2_min_error:
-        tp_global = initial_g_size - 1 + step_size * min_error_index + tp_initial
-        tp_initial = turnpoint_index + tp_initial
-    else:
-        tp_global = initial_g_size - 1 + step_size * min_error_index + tp_initial
-
-    # 把全局拐点index加入列表，同时避免重复记录
-    if tp_global not in turnpoints:
-        turnpoints.append(tp_global)
-    tp2 = turnpoints
-
-    # 把确认找到的拐点再做一次拟合，用于输出图像
-    regr_g1 = linear_model.LinearRegression()
-    regr_g1.fit(x_data[:turnpoint_index + 1], y_data[:turnpoint_index + 1])
-    # a1, b1 = regr_g1.coef_, regr_g1.intercept_
-    # print('y = {}x + {}'.format(a1[0], b1))
-
-    regr_g2 = linear_model.LinearRegression()
-    regr_g2.fit(x_data[turnpoint_index:], y_data[turnpoint_index:])
-    # a2, b2 = regr_g2.coef_, regr_g2.intercept_
-    # print('y = {}x + {}'.format(a2[0], b2))
-
-    if plot:  # 是否要作图的选项
-        if turnpoint_size > 1:
-            if g1_min_error > g2_min_error:
-                # plt.plot(x_data[:turnpoint_index+1+step_size], y_data[:turnpoint_index+1+step_size], 'o')
-                plt.plot(x_data[turnpoint_index - step_size:], y_data[turnpoint_index - step_size:], 'o')
-                # plt.plot(x_data[:turnpoint_index+1+step_size], regr_g1.predict(x_data[:turnpoint_index+1+step_size]))
-                plt.plot(x_data[turnpoint_index - step_size:], regr_g2.predict(x_data[turnpoint_index - step_size:]))
+        if plot:  # 是否要作图的选项
+            if turnpoint_size > 1:
+                if g1_min_error > g2_min_error:
+                    # plt.plot(x_data[:turnpoint_index+1+step_size], y_data[:turnpoint_index+1+step_size], 'o')
+                    plt.plot(x_data[turnpoint_index - step_size:], y_data[turnpoint_index - step_size:], 'o')
+                    # plt.plot(x_data[:turnpoint_index+1+step_size], regr_g1.predict(x_data[:turnpoint_index+1+step_size]))
+                    plt.plot(x_data[turnpoint_index - step_size:],
+                             regr_g2.predict(x_data[turnpoint_index - step_size:]))
+                else:
+                    plt.plot(x_data[:turnpoint_index + 1 + step_size], y_data[:turnpoint_index + 1 + step_size], 'o')
+                    # plt.plot(x_data[turnpoint_index-step_size:], y_data[turnpoint_index-step_size:], 'o')
+                    plt.plot(x_data[:turnpoint_index + 1 + step_size],
+                             regr_g1.predict(x_data[:turnpoint_index + 1 + step_size]))
+                    # plt.plot(x_data[turnpoint_index-step_size:], regr_g2.predict(x_data[turnpoint_index-step_size:]))
             else:
                 plt.plot(x_data[:turnpoint_index + 1 + step_size], y_data[:turnpoint_index + 1 + step_size], 'o')
-                # plt.plot(x_data[turnpoint_index-step_size:], y_data[turnpoint_index-step_size:], 'o')
+                plt.plot(x_data[turnpoint_index - step_size:], y_data[turnpoint_index - step_size:], 'o')
                 plt.plot(x_data[:turnpoint_index + 1 + step_size],
                          regr_g1.predict(x_data[:turnpoint_index + 1 + step_size]))
-                # plt.plot(x_data[turnpoint_index-step_size:], regr_g2.predict(x_data[turnpoint_index-step_size:]))
-        else:
-            plt.plot(x_data[:turnpoint_index + 1 + step_size], y_data[:turnpoint_index + 1 + step_size], 'o')
-            plt.plot(x_data[turnpoint_index - step_size:], y_data[turnpoint_index - step_size:], 'o')
-            plt.plot(x_data[:turnpoint_index + 1 + step_size],
-                     regr_g1.predict(x_data[:turnpoint_index + 1 + step_size]))
-            plt.plot(x_data[turnpoint_index - step_size:], regr_g2.predict(x_data[turnpoint_index - step_size:]))
+                plt.plot(x_data[turnpoint_index - step_size:], regr_g2.predict(x_data[turnpoint_index - step_size:]))
 
-    # 下面的语句把1个或者2个拐点的index存入turnpoints列表，并返回
-    while turnpoint_size > 1:
-        if g1_min_error > g2_min_error:
-            x_data = x_data[:turnpoint_index + 1 + step_size]
-            y_data = y_data[:turnpoint_index + 1 + step_size]
-            find_turnpoints(x_data, y_data, initial_g_size=initial_g_size, step_size=step_size,
-                            turnpoint_size=turnpoint_size - 1, plot=plot, turnpoints=tp2, tp_initial=tp_initial)
-            return turnpoints
-            turnpoint_size -= 1
+        # 下面的语句把1个或者2个拐点的index存入turnpoints列表，并返回
+        while turnpoint_size > 1:
+            if g1_min_error > g2_min_error:
+                x_data = x_data[:turnpoint_index + 1 + step_size]
+                y_data = y_data[:turnpoint_index + 1 + step_size]
+                wrapper(x_data, y_data, initial_g_size=initial_g_size, step_size=step_size,
+                        turnpoint_size=turnpoint_size - 1, plot=plot, turnpoints=tp2, tp_initial=tp_initial)
+                return turnpoints
+                turnpoint_size -= 1
+            else:
+                x_data = x_data[turnpoint_index + step_size:]
+                y_data = y_data[turnpoint_index + step_size:]
+                wrapper(x_data, y_data, initial_g_size=initial_g_size, step_size=step_size,
+                        turnpoint_size=turnpoint_size - 1, plot=plot, turnpoints=tp2, tp_initial=tp_initial)
+                return turnpoints
+                turnpoint_size -= 1
         else:
-            x_data = x_data[turnpoint_index + step_size:]
-            y_data = y_data[turnpoint_index + step_size:]
-            find_turnpoints(x_data, y_data, initial_g_size=initial_g_size, step_size=step_size,
-                            turnpoint_size=turnpoint_size - 1, plot=plot, turnpoints=tp2, tp_initial=tp_initial)
             return turnpoints
-            turnpoint_size -= 1
-    else:
-        return turnpoints
+
+    result = wrapper(x_data=x_data, y_data=y_data, initial_g_size=initial_g_size, step_size=step_size,
+                     turnpoint_size=turnpoint_size, plot=plot, turnpoints=[], tp_initial=tp_initial)
+
+    return result
 
 
 @jit
