@@ -658,7 +658,8 @@ class BloodLactate(object):
         使用Dickhuth-Berg方法确定LT1 & LT2
 
         Reference:
-            Berg A, Jokob M, Lehmann HH, Dickhuth G, Huber J. Actualle Aspekte der modernen ergometrie. Pneum 1990;44:2-13.
+            Berg A, Jokob M, Lehmann HH, Dickhuth G, Huber J.
+            Actualle Aspekte der modernen ergometrie. Pneum 1990;44:2-13.
         Param:
             intensity_data: data series of test load (power, or speed); type: list, or ndarray
             lactate_data: data series of BLa; type: list, or ndarray
