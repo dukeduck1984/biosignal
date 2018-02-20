@@ -291,9 +291,9 @@ def breath_time_convert(raw_time_string):
 
 
 @jit
-def velocity_time_curve(grf, bw, freq):
+def force_to_velocity(grf, bw, freq):
     """
-    通过GRF一次积分求速度-时间曲线
+    通过GRF一次积分求速度
     Calculate velocity over time series by ground reaction force
 
     Param:
@@ -311,7 +311,7 @@ def velocity_time_curve(grf, bw, freq):
 
 
 @jit
-def distance_time_curve(vtc, freq):
+def force_to_displacement(vtc, freq):
     """
     通过VTC积分求位移-时间曲线（GRF的二次积分）
     Calculate displacement over time series by velocity over time
