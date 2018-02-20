@@ -3,7 +3,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from numba import jit
-from scipy import signal, constants
+from scipy import signal
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn import linear_model
 
@@ -410,7 +410,7 @@ class GasExchange(object):
             return smoothed_time_series, smoothed_breath_data
 
     @staticmethod
-    def oxidation_factor(vco2, vo2):
+    def oxidation_energy(vco2, vo2):
         """
         输入VCO2和VO2得到呼吸商，再得到糖和脂肪的氧化供能占比
         Get RER, and energy source by VO2 and VCO2 data
@@ -463,7 +463,7 @@ class ForcePlate(object):
         if freq is not None:
             self.freq = freq
 
-        velocity = (self.grf - self.bw * constants.G) * (1 / self.freq) / self.bw
+        velocity = (self.grf - self.bw * 9.80665) * (1 / self.freq) / self.bw
 
         velocity_over_time = []
         for i in range(velocity.size):
