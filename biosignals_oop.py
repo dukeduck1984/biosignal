@@ -409,6 +409,24 @@ class GasExchange(object):
 
             return smoothed_time_series, smoothed_breath_data
 
+    def vo2peak(self, time_series=None, time_window=30):
+        """
+        Get VO2peak value (absolute) over 30s smoothed VO2 data
+        :param time_series: Time series correspoding to the GE data
+        :param time_window: Window size for averaging time
+        :return: the time point of when the VO2peak appears, the absolute value of VO2peak
+        """
+        if self.time_series is None and time_series is None:
+            print("Error! Time series data missing...")
+            return
+        elif time_series is not None:
+            self.time_series = time_series
+
+        time, time_averaged_gas = self.breath_smooth(window_size=time_window)
+        vo2peak = np.max(time_averaged_gas)
+        time_vo2peak = time[np.argmax(time_averaged_gas)]
+        return time_vo2peak, vo2peak
+
     @staticmethod
     def oxidation_energy(vco2, vo2):
         """
