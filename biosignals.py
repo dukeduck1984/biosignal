@@ -7,6 +7,7 @@ from scipy import signal
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn import linear_model
 
+
 @jit
 def remove_offset(emg_data):
     """
@@ -141,7 +142,7 @@ def calc_rms(emg_data, freq, window_size, overlap='default'):
         rms_final_t[t] = round(window_size / 2) + t * (window_size - overlap)
 
     # Return RMS time series and RMS data in a tuple, both are ndarray
-    return (rms_final_t, rms_final)
+    return rms_final_t, rms_final
 
 
 @jit
@@ -205,7 +206,7 @@ def power_spectrum(emg_data):
         if np.sum(cumulative_power) >= np.sum(power_spect)/2:
             median_freq = one_freq
             break
-    return (power_freq, power_spect, mean_freq, median_freq)
+    return power_freq, power_spect, mean_freq, median_freq
 
 
 @jit
@@ -238,17 +239,18 @@ def breath_smooth(breath_data, time_series, window_size=30, avg_by='time'):
         b, a = signal.butter(n, wn)
         filtered_breath_data = signal.filtfilt(b, a, breath_data)
         # Return breath time series and smoothed breath data in a tuple, both are ndarray
-        return (time_series, filtered_breath_data)
+        return time_series, filtered_breath_data
     elif avg_by == 'time':
         midpoint = round(window_size / 2)  # Get midpoint of the window, eg. the 8th second if the window is 15s
-        smoothed_block = int(time_series[-1] / window_size)  # Get the smoothed block number: total time divided by window size
+        # Get the smoothed block number: total time divided by window size
+        smoothed_block = int(time_series[-1] / window_size)
         smoothed_breath_data = np.zeros(smoothed_block)  # Create ndarray of smoothed data
         smoothed_time_series = np.zeros(smoothed_block)  # Create ndarray of smoothed time series
 
         for i in range(smoothed_block):
             data_list = []
             for time, data in zip(time_series, breath_data):
-                if time > (i * window_size) and time <= (window_size + i * window_size):
+                if (i * window_size) < time <= (window_size + i * window_size):
                     data_list.append(data)
             data_mean = np.mean(data_list)
             smoothed_breath_data[i] = data_mean
@@ -256,9 +258,9 @@ def breath_smooth(breath_data, time_series, window_size=30, avg_by='time'):
         for n in range(smoothed_block):
             smoothed_time_series[n] = midpoint + n * window_size
 
-        return (smoothed_time_series, smoothed_breath_data)
-    elif method == 'points':
-        midpoint = round(window_size / 2) # Get midpoint of the window, eg. the 8th breath if the window is 15 breathes
+        return smoothed_time_series, smoothed_breath_data
+    elif avg_by == 'points':
+        midpoint = round(window_size / 2)  # Get midpoint of the window, eg. the 8th breath if the window is 15 breathes
         window = np.ones(window_size)/float(window_size)
         smoothed_breath_data = np.convolve(breath_data, window, 'valid')
 
@@ -266,7 +268,7 @@ def breath_smooth(breath_data, time_series, window_size=30, avg_by='time'):
         final_time_index = int((midpoint - 1) * -1)
         smoothed_time_series = time_series[first_time_index: final_time_index]
 
-        return (smoothed_time_series, smoothed_breath_data)
+        return smoothed_time_series, smoothed_breath_data
 
 
 @jit
@@ -326,8 +328,9 @@ def distance_time_curve(vtc, freq):
     return np.array(dist_time_curve)
 
 
+@jit
 def find_turnpoints(x_data, y_data, initial_g_size=2, step_size=1, turnpoint_size=1, plot=False,
-                    tp_initial=0):
+                    tp_initial=0, turnpoints=None):
     """
     使用线性回归寻找数据的拐点
     Find Turnpoints of Data Points by Brutal-Force Linear Regression
@@ -344,120 +347,112 @@ def find_turnpoints(x_data, y_data, initial_g_size=2, step_size=1, turnpoint_siz
     Return:
         turnpoints: the global index(es) of data turnpoint(s) after linear regression; type: list
     """
-    initialize_tp = []  # Initialize an empty list to collect turnpoints
 
-    @jit
-    def wrapper(x_data, y_data, initial_g_size, step_size, turnpoint_size, plot, tp_initial, turnpoints=initialize_tp):
+    if turnpoints is None:
+        turnpoints = []
 
-        x_data = np.array(x_data).reshape(-1, 1)
-        y_data = np.array(y_data).reshape(-1, 1)
+    x_data = np.array(x_data).reshape(-1, 1)
+    y_data = np.array(y_data).reshape(-1, 1)
 
-        residual_sum_of_squares = []  # 收集各分组情况的均方误差列表
-        g1_error_list = []  # 第1组数据的误差列表
-        g2_error_list = []  # 第2组数据的误差列表
-        g1_size = initial_g_size  # 第1组的数据点数
-        sample_size = x_data.size  # 总共的数据点数
+    residual_sum_of_squares = []  # 收集各分组情况的均方误差列表
+    g1_error_list = []  # 第1组数据的误差列表
+    g2_error_list = []  # 第2组数据的误差列表
+    g1_size = initial_g_size  # 第1组的数据点数
+    sample_size = x_data.size  # 总共的数据点数
 
-        while (sample_size - g1_size) >= initial_g_size:  # 当第2组的数据点数大于等于第1组的初始数据点数时
-            regr_g1 = linear_model.LinearRegression()
-            regr_g1.fit(x_data[:g1_size], y_data[:g1_size])
-            # a1, b1 = regr_g1.coef_, regr_g1.intercept_
-            g1_mean_sq_error = np.mean((regr_g1.predict(x_data[:g1_size]) - y_data[:g1_size]) ** 2)
-            # print('y = {}x + {}'.format(a1[0], b1))
-            # plt.plot(log_power[:7], regr_g1.predict(log_power[:7]), color='red')
-
-            regr_g2 = linear_model.LinearRegression()
-            regr_g2.fit(x_data[g1_size - 1:], y_data[g1_size - 1:])
-            # a2, b2 = regr_g2.coef_, regr_g2.intercept_
-            g2_mean_sq_error = np.mean((regr_g2.predict(x_data[g1_size - 1:]) - y_data[g1_size - 1:]) ** 2)
-            # print('y = {}x + {}'.format(a2[0], b2))
-            # plt.plot(log_power[4:], regr_g2.predict(log_power[4:]), color='green')
-
-            residual_sum_of_squares.append(g1_mean_sq_error + g2_mean_sq_error)  # 两组的均方误差之和加入列表
-            g1_error_list.append(g1_mean_sq_error)
-            g2_error_list.append(g2_mean_sq_error)
-
-            g1_size += step_size
-
-        # print(residual_sum_of_squares)
-        # 通过最小均方误差找到拐点index
-        # rss = np.array(residual_sum_of_squares)
-        # turnpoint_index = initial_g_size - 1 + step_size * np.where(rss == np.min(rss))[0]
-        min_error_index = residual_sum_of_squares.index(min(residual_sum_of_squares))
-
-        g1_min_error = g1_error_list[min_error_index]
-        g2_min_error = g2_error_list[min_error_index]
-
-        # 获得分组内的拐点index
-        turnpoint_index = initial_g_size - 1 + step_size * min_error_index
-
-        # 获得全局的拐点index
-        if g1_min_error < g2_min_error:
-            tp_global = initial_g_size - 1 + step_size * min_error_index + tp_initial
-            tp_initial = turnpoint_index + tp_initial
-        else:
-            tp_global = initial_g_size - 1 + step_size * min_error_index + tp_initial
-
-        # 把全局拐点index加入列表，同时避免重复记录
-        if tp_global not in turnpoints:
-            turnpoints.append(tp_global)
-        tp2 = turnpoints
-
-        # 把确认找到的拐点再做一次拟合，用于输出图像
+    while (sample_size - g1_size) >= initial_g_size:  # 当第2组的数据点数大于等于第1组的初始数据点数时
         regr_g1 = linear_model.LinearRegression()
-        regr_g1.fit(x_data[:turnpoint_index + 1], y_data[:turnpoint_index + 1])
+        regr_g1.fit(x_data[:g1_size], y_data[:g1_size])
         # a1, b1 = regr_g1.coef_, regr_g1.intercept_
+        g1_mean_sq_error = np.mean((regr_g1.predict(x_data[:g1_size]) - y_data[:g1_size]) ** 2)
         # print('y = {}x + {}'.format(a1[0], b1))
+        # plt.plot(log_power[:7], regr_g1.predict(log_power[:7]), color='red')
 
         regr_g2 = linear_model.LinearRegression()
-        regr_g2.fit(x_data[turnpoint_index:], y_data[turnpoint_index:])
+        regr_g2.fit(x_data[g1_size - 1:], y_data[g1_size - 1:])
         # a2, b2 = regr_g2.coef_, regr_g2.intercept_
+        g2_mean_sq_error = np.mean((regr_g2.predict(x_data[g1_size - 1:]) - y_data[g1_size - 1:]) ** 2)
         # print('y = {}x + {}'.format(a2[0], b2))
+        # plt.plot(log_power[4:], regr_g2.predict(log_power[4:]), color='green')
 
-        if plot:  # 是否要作图的选项
-            if turnpoint_size > 1:
-                if g1_min_error > g2_min_error:
-                    # plt.plot(x_data[:turnpoint_index+1+step_size], y_data[:turnpoint_index+1+step_size], 'o')
-                    plt.plot(x_data[turnpoint_index - step_size:], y_data[turnpoint_index - step_size:], 'o')
-                    # plt.plot(x_data[:turnpoint_index+1+step_size], regr_g1.predict(x_data[:turnpoint_index+1+step_size]))
-                    plt.plot(x_data[turnpoint_index - step_size:],
-                             regr_g2.predict(x_data[turnpoint_index - step_size:]))
-                else:
-                    plt.plot(x_data[:turnpoint_index + 1 + step_size], y_data[:turnpoint_index + 1 + step_size], 'o')
-                    # plt.plot(x_data[turnpoint_index-step_size:], y_data[turnpoint_index-step_size:], 'o')
-                    plt.plot(x_data[:turnpoint_index + 1 + step_size],
-                             regr_g1.predict(x_data[:turnpoint_index + 1 + step_size]))
-                    # plt.plot(x_data[turnpoint_index-step_size:], regr_g2.predict(x_data[turnpoint_index-step_size:]))
+        residual_sum_of_squares.append(g1_mean_sq_error + g2_mean_sq_error)  # 两组的均方误差之和加入列表
+        g1_error_list.append(g1_mean_sq_error)
+        g2_error_list.append(g2_mean_sq_error)
+
+        g1_size += step_size
+
+    # print(residual_sum_of_squares)
+    # 通过最小均方误差找到拐点index
+    # rss = np.array(residual_sum_of_squares)
+    # turnpoint_index = initial_g_size - 1 + step_size * np.where(rss == np.min(rss))[0]
+    min_error_index = residual_sum_of_squares.index(min(residual_sum_of_squares))
+
+    g1_min_error = g1_error_list[min_error_index]
+    g2_min_error = g2_error_list[min_error_index]
+
+    # 获得分组内的拐点index
+    turnpoint_index = initial_g_size - 1 + step_size * min_error_index
+
+    # 获得全局的拐点index
+    if g1_min_error < g2_min_error:
+        tp_global = initial_g_size - 1 + step_size * min_error_index + tp_initial
+        tp_initial = turnpoint_index + tp_initial
+    else:
+        tp_global = initial_g_size - 1 + step_size * min_error_index + tp_initial
+
+    # 把全局拐点index加入列表，同时避免重复记录
+    if tp_global not in turnpoints:
+        turnpoints.append(tp_global)
+    tp2 = turnpoints
+
+    # 把确认找到的拐点再做一次拟合，用于输出图像
+    regr_g1 = linear_model.LinearRegression()
+    regr_g1.fit(x_data[:turnpoint_index + 1], y_data[:turnpoint_index + 1])
+    # a1, b1 = regr_g1.coef_, regr_g1.intercept_
+    # print('y = {}x + {}'.format(a1[0], b1))
+
+    regr_g2 = linear_model.LinearRegression()
+    regr_g2.fit(x_data[turnpoint_index:], y_data[turnpoint_index:])
+    # a2, b2 = regr_g2.coef_, regr_g2.intercept_
+    # print('y = {}x + {}'.format(a2[0], b2))
+
+    if plot:  # 是否要作图的选项
+        if turnpoint_size > 1:
+            if g1_min_error > g2_min_error:
+                # plt.plot(x_data[:turnpoint_index+1+step_size], y_data[:turnpoint_index+1+step_size], 'o')
+                plt.plot(x_data[turnpoint_index - step_size:], y_data[turnpoint_index - step_size:], 'o')
+                # plt.plot(x_data[:turnpoint_index+1+step_size], regr_g1.predict(x_data[:turnpoint_index+1+step_size]))
+                plt.plot(x_data[turnpoint_index - step_size:],
+                         regr_g2.predict(x_data[turnpoint_index - step_size:]))
             else:
                 plt.plot(x_data[:turnpoint_index + 1 + step_size], y_data[:turnpoint_index + 1 + step_size], 'o')
-                plt.plot(x_data[turnpoint_index - step_size:], y_data[turnpoint_index - step_size:], 'o')
+                # plt.plot(x_data[turnpoint_index-step_size:], y_data[turnpoint_index-step_size:], 'o')
                 plt.plot(x_data[:turnpoint_index + 1 + step_size],
                          regr_g1.predict(x_data[:turnpoint_index + 1 + step_size]))
-                plt.plot(x_data[turnpoint_index - step_size:], regr_g2.predict(x_data[turnpoint_index - step_size:]))
-
-        # 下面的语句把1个或者2个拐点的index存入turnpoints列表，并返回
-        while turnpoint_size > 1:
-            if g1_min_error > g2_min_error:
-                x_data = x_data[:turnpoint_index + 1 + step_size]
-                y_data = y_data[:turnpoint_index + 1 + step_size]
-                wrapper(x_data, y_data, initial_g_size=initial_g_size, step_size=step_size,
-                        turnpoint_size=turnpoint_size - 1, plot=plot, turnpoints=tp2, tp_initial=tp_initial)
-                return turnpoints
-                turnpoint_size -= 1
-            else:
-                x_data = x_data[turnpoint_index + step_size:]
-                y_data = y_data[turnpoint_index + step_size:]
-                wrapper(x_data, y_data, initial_g_size=initial_g_size, step_size=step_size,
-                        turnpoint_size=turnpoint_size - 1, plot=plot, turnpoints=tp2, tp_initial=tp_initial)
-                return turnpoints
-                turnpoint_size -= 1
+                # plt.plot(x_data[turnpoint_index-step_size:], regr_g2.predict(x_data[turnpoint_index-step_size:]))
         else:
+            plt.plot(x_data[:turnpoint_index + 1 + step_size], y_data[:turnpoint_index + 1 + step_size], 'o')
+            plt.plot(x_data[turnpoint_index - step_size:], y_data[turnpoint_index - step_size:], 'o')
+            plt.plot(x_data[:turnpoint_index + 1 + step_size],
+                     regr_g1.predict(x_data[:turnpoint_index + 1 + step_size]))
+            plt.plot(x_data[turnpoint_index - step_size:], regr_g2.predict(x_data[turnpoint_index - step_size:]))
+
+    # 下面的语句把1个或者2个拐点的index存入turnpoints列表，并返回
+    while turnpoint_size > 1:
+        if g1_min_error > g2_min_error:
+            x_data = x_data[:turnpoint_index + 1 + step_size]
+            y_data = y_data[:turnpoint_index + 1 + step_size]
+            find_turnpoints(x_data, y_data, initial_g_size=initial_g_size, step_size=step_size,
+                            turnpoint_size=turnpoint_size - 1, plot=plot, turnpoints=tp2, tp_initial=tp_initial)
             return turnpoints
-
-    result = wrapper(x_data=x_data, y_data=y_data, initial_g_size=initial_g_size, step_size=step_size,
-                     turnpoint_size=turnpoint_size, plot=plot, turnpoints=[], tp_initial=tp_initial)
-
-    return result
+        else:
+            x_data = x_data[turnpoint_index + step_size:]
+            y_data = y_data[turnpoint_index + step_size:]
+            find_turnpoints(x_data, y_data, initial_g_size=initial_g_size, step_size=step_size,
+                            turnpoint_size=turnpoint_size - 1, plot=plot, turnpoints=tp2, tp_initial=tp_initial)
+            return turnpoints
+    else:
+        return turnpoints
 
 
 @jit
@@ -497,7 +492,7 @@ def find_lt_loglog_method(intensity_data, lactate_data, plot=False):
     y = a1 * (b2 - b1) / (a1 - a2) + b1
     lt1_intensity = np.exp(x)  # 计算两条拟合直线交点对应的X轴数据，即LT1运动强度
     lt1_lactate = np.exp(y)  # 计算两条拟合直线交点对应的Y轴数据，即LT1血乳酸值
-    return (lt1_intensity, lt1_lactate, lt1_index[0])  # 返回元组（LT1的运动强度, LT1的血乳酸值, LT1的index）
+    return lt1_intensity, lt1_lactate, lt1_index[0]  # 返回元组（LT1的运动强度, LT1的血乳酸值, LT1的index）
 
 
 @jit
@@ -512,7 +507,8 @@ def find_lt_sds_method(intensity_data, lactate_data, loglog=False, plot=False):
     Param:
         intensity_data: data series of test load (power, or speed); type: list, or ndarray
         lactate_data: data series of BLa; type: list, or ndarray
-        log-log: whether or not to use Log-log transformation to determin the LT1, if false, LT1 is determined by first rise of 0.4mM BLa; type: boolean
+        log-log: whether or not to use Log-log transformation to determin the LT1,
+                 if false, LT1 is determined by first rise of 0.4mM BLa; type: boolean
         plot: whether or not plot the data and the regression line; type: boolean
     Return:
         (Load at LT1, BLa at LT1, Index of data at LT1, Load at LT2, BLa at LT2); type: tuple
@@ -547,7 +543,7 @@ def find_lt_sds_method(intensity_data, lactate_data, loglog=False, plot=False):
         x1 = intensity_data[lt1_index - 2][0]
         y1 = lactate_data[lt1_index - 2][0]
         curvefit_index = lt1_index - 2
-    elif lt1_index >= 1 and lt1_index < 2:
+    elif 1 <= lt1_index < 2:
         x1 = intensity_data[lt1_index - 1][0]
         y1 = lactate_data[lt1_index - 1][0]
         curvefit_index = lt1_index - 1
@@ -620,7 +616,7 @@ def find_lt_sds_method(intensity_data, lactate_data, loglog=False, plot=False):
         plt.plot([lt2_intensity, lt2_intensity], [0, lt2_lactate], '--')  # 画出LT2的标示线
 
     # 返回元组（LT1的运动强度, LT1的血乳酸值, LT1的index, LT2的运动强度, LT2的血乳酸值）
-    return (lt1_intensity, lt1_lactate, lt1_index, lt2_intensity, lt2_lactate)
+    return lt1_intensity, lt1_lactate, lt1_index, lt2_intensity, lt2_lactate
 
 
 @jit
@@ -653,7 +649,7 @@ def find_lt_dickhuth_method(intensity_data, lactate_data, plot=False):
     # 根据LT1点的index决定曲线拟合的起点index
     if lt1_index >= 2:
         curvefit_index = lt1_index - 2
-    elif lt1_index >= 1 and lt1_index < 2:
+    elif 1 <= lt1_index < 2:
         curvefit_index = lt1_index - 1
     else:
         curvefit_index = lt1_index
@@ -698,7 +694,7 @@ def find_lt_dickhuth_method(intensity_data, lactate_data, plot=False):
             # plt.xlabel('Pace (min/km)')
             # plt.xticks(range(x1, x2 + 1), pace_list)
 
-    return (lt1_intensity, lt1_lactate, lt1_index, lt2_intensity, lt2_lactate)
+    return lt1_intensity, lt1_lactate, lt1_index, lt2_intensity, lt2_lactate
 
 
 def oxidation_factor(vco2, vo2):
@@ -721,14 +717,14 @@ def oxidation_factor(vco2, vo2):
         glucose, fat = oxidation_factor(3282.49489346189, 3568.79672239863)
         print("糖氧化为{}%；脂肪氧化为{}%".format(glucose, fat))
     """
-    rq = vco2 / vo2 # 得到呼吸商原始值
-    rer = np.where(rq >= 0.7, rq, 0.7) # 排除异常值，即将呼吸商最小值设为0.7
-    rq = np.where(rer <= 1, rer, 1) # 用于计算有氧部分的供能来源，故将呼吸商最大值设为1
-    x_gram_fat = (0.7426 - 0.7455 * rq) / (2.0092 * rq - 1.4136) # x g脂肪氧化产生的能量
-    e = 3.8683 + x_gram_fat * 9.7460 # 氧化1g糖和x g脂肪产生的能量 （PERONNET F et al., 1991）
-    glucose_percent = 3.8683 / e * 100 # 糖有氧氧化供能百分比
-    fat_percent = 100 - glucose_percent # 脂肪有氧氧化供能百分比
-    energy_oxidation = e / (0.7455 + 2.0092 * x_gram_fat) # 有氧氧化供能的能量（Kcal/L）
-    glucose_kcal = energy_oxidation * vo2 / 1000 * glucose_percent / 100 # 糖有氧氧化供能的能量（Kcal/min）
-    fat_kcal = energy_oxidation * vo2 / 1000 * fat_percent / 100 # 脂肪有氧氧化供能的能量（Kcal/min）
-    return (rer, glucose_kcal, fat_kcal, glucose_percent, fat_percent) # 返回数组（呼吸商，糖供能能量，脂肪供能能量，糖供能百分比，脂肪供能百分比）
+    rq = vco2 / vo2  # 得到呼吸商原始值
+    rer = np.where(rq >= 0.7, rq, 0.7)  # 排除异常值，即将呼吸商最小值设为0.7
+    rq = np.where(rer <= 1, rer, 1)  # 用于计算有氧部分的供能来源，故将呼吸商最大值设为1
+    x_gram_fat = (0.7426 - 0.7455 * rq) / (2.0092 * rq - 1.4136)  # x g脂肪氧化产生的能量
+    e = 3.8683 + x_gram_fat * 9.7460  # 氧化1g糖和x g脂肪产生的能量 （PERONNET F et al., 1991）
+    glucose_percent = 3.8683 / e * 100  # 糖有氧氧化供能百分比
+    fat_percent = 100 - glucose_percent  # 脂肪有氧氧化供能百分比
+    energy_oxidation = e / (0.7455 + 2.0092 * x_gram_fat)  # 有氧氧化供能的能量（Kcal/L）
+    glucose_kcal = energy_oxidation * vo2 / 1000 * glucose_percent / 100  # 糖有氧氧化供能的能量（Kcal/min）
+    fat_kcal = energy_oxidation * vo2 / 1000 * fat_percent / 100  # 脂肪有氧氧化供能的能量（Kcal/min）
+    return rer, glucose_kcal, fat_kcal, glucose_percent, fat_percent  # 返回数组（呼吸商，糖供能能量，脂肪供能能量，糖供能百分比，脂肪供能百分比）
